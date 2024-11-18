@@ -1,2 +1,3 @@
 ## Image recognition with vector databas
 
+pip install customtkinter tkinter PIL langchain langchain-ollama chromadb numpy opencv-python ast
