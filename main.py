@@ -1,6 +1,66 @@
 import customtkinter as ctk
 from tkinter import filedialog
 from PIL import Image, ImageTk
+import cv2
+from chromadb.config import Settings
+import chromadb
+import tensorflow as tf
+
+# -----------------------------------
+# TensorFlow: Image Feature Extraction
+# -----------------------------------
+
+# Load pre-trained model for feature extraction
+model = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3), weights='imagenet', include_top=False, pooling='avg')
+
+def preprocess_image(image):
+    img = tf.image.resize(image, (224, 224))
+    img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
+    return img
+
+def extract_features(image):
+    preprocessed_image = preprocess_image(image)
+    features = model.predict(tf.expand_dims(preprocessed_image, axis=0))
+    return features
+
+
+
+# -----------------------------------
+# ChromaDB: Storing Image Embeddings
+# -----------------------------------
+
+client = chromadb.Client(Settings())
+collection = client.create_collection("image_embeddings")
+
+def add_image_embedding(image_id, embedding):
+    collection.add(
+        ids=[image_id],
+        embeddings=[embedding.flatten().tolist()],
+        metadatas=[{'image_id': image_id}]
+    )
+    print("=================================================")
+    print
+    print([embedding.flatten().tolist()])
+
+# # -----------------------------------
+# # Workflow to Save and Search Images
+# # -----------------------------------
+
+def save_image(image_id, image):
+    # Extract image features (embeddings)
+    embedding = extract_features(image)
+    print(len(embedding[0]))
+    for i in embedding:
+        print(i, end="" )
+    # Save the embedding into ChromaDB
+    add_image_embedding(image_id, embedding)
+    print(f"Image {image_id} saved successfully!")
+
+
+
+# -----------------------------------
+# customtkinter
+# -----------------------------------
 
 # Initialize the CustomTkinter theme
 ctk.set_appearance_mode("System")  # Use "Dark" or "Light" for fixed modes

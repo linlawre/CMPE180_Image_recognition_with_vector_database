@@ -32,6 +32,7 @@ client = chromadb.Client(Settings())
 collection = client.create_collection("image_embeddings")
 
 def add_image_embedding(image_id, embedding):
+
     collection.add(
         ids=[image_id],
         embeddings=[embedding.flatten().tolist()],
