@@ -24,7 +24,6 @@ def extract_features(image):
     return features
 
 
-
 # -----------------------------------
 # ChromaDB: Storing Image Embeddings
 # -----------------------------------
