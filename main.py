@@ -5,6 +5,9 @@ import cv2
 from chromadb.config import Settings
 import chromadb
 import tensorflow as tf
+import numpy as np
+import os
+from diffusers import StableDiffusionImg2ImgPipeline
 
 # -----------------------------------
 # TensorFlow: Image Feature Extraction
@@ -12,15 +15,19 @@ import tensorflow as tf
 
 # Load pre-trained model for feature extraction
 model = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3), weights='imagenet', include_top=False, pooling='avg')
+pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
+pipe = pipe.to("cpu")  # Use CPU (remove this line if running on GPU)
 
 def preprocess_image(image):
+    if image.shape[-1] == 4:  # Check if the image has 4 channels
+        image = image[:, :, :3]  # Remove the alpha channel
     img = tf.image.resize(image, (224, 224))
     img = tf.keras.applications.mobilenet_v2.preprocess_input(img)
     return img
 
 def extract_features(image):
     preprocessed_image = preprocess_image(image)
-    features = model.predict(tf.expand_dims(preprocessed_image, axis=0))
+    features = model.predict(tf.expand_dims(preprocessed_image, axis = 0))
     return features
 
 
@@ -31,16 +38,12 @@ def extract_features(image):
 client = chromadb.Client(Settings())
 collection = client.create_collection("image_embeddings")
 
-def add_image_embedding(image_id, embedding):
+def add_image_embedding(image_id, embedding, location):
     collection.add(
-        ids=[image_id],
-        embeddings=[embedding.flatten().tolist()],
-        metadatas=[{'image_id': image_id}]
+        ids=[image_id.split(".")[0]],
+        embeddings=[embedding],
+        metadatas=[{'image_id': location}]
     )
-    print("=================================================")
-    print
-    print([embedding.flatten().tolist()])
-
 # # -----------------------------------
 # # Workflow to Save and Search Images
 # # -----------------------------------
@@ -48,18 +51,44 @@ def add_image_embedding(image_id, embedding):
 def save_image(image_id, image):
     # Extract image features (embeddings)
     embedding = extract_features(image)
-    print(len(embedding[0]))
-    for i in embedding:
-        print(i, end="" )
     # Save the embedding into ChromaDB
     add_image_embedding(image_id, embedding)
-    print(f"Image {image_id} saved successfully!")
-
-
 
 # -----------------------------------
 # customtkinter
 # -----------------------------------
+
+directory_path = "./database"
+
+# List all files in the directory
+file_names = os.listdir(directory_path)
+
+
+file_name = "database.txt"
+
+index = 0
+
+file_name_list = list()
+embeding_list = list()
+location_list = list()
+
+with open(file_name, "r") as file:
+    for line in file:
+        if index == 0:
+            file_name_list.append(line.strip())
+            index = index + 1
+        elif index == 1:
+            array = np.array([float(num) for num in line.split()])
+            embeding_list.append(array)
+            index = index + 1
+        elif index == 2:
+            location_list.append(line.strip())
+            index = 0
+
+
+for i in range(len(file_name_list)):
+    add_image_embedding(file_name_list[i], embeding_list[i], location_list[i])
+
 
 # Initialize the CustomTkinter theme
 ctk.set_appearance_mode("System")  # Use "Dark" or "Light" for fixed modes
@@ -86,15 +115,56 @@ def load_image():
     file_path = filedialog.askopenfilename(
         filetypes=[("Image files", "*.jpg;*.jpeg;*.png;*.bmp;*.gif")]
     )
+
     if file_path:
         # Open, resize, and display the image
-        img = Image.open(file_path)
-        img = img.resize((int(middle_width * 0.8), int(screen_height * 0.4)), Image.LANCZOS)
-        img_tk = ImageTk.PhotoImage(img)
+        print(file_path)
 
+        img = Image.open(file_path)
+        img = img.resize(((224, 224)), Image.LANCZOS)
+        img_tk = ImageTk.PhotoImage(img)
+        # opencv_img = cv2.imread(file_path)
+        opencv_img = Image.open(file_path)
+        opencv_img = np.array(opencv_img)
         # Update the label with the image
         image_label.configure(image=img_tk, text="")  # Clear the text
         image_label.image = img_tk  # Keep a reference to avoid garbage collection
+
+
+        embed = extract_features(opencv_img)
+
+        results = collection.query(
+            query_embeddings=embed[0],
+            n_results=3  # Change this number for the number of resu6666666alts you want
+        )
+
+        print(results)
+        index = 0
+        for i in results['metadatas'][0]:
+            image = Image.open(i['image_id'])
+            image_resized = image.resize((224, 224))  # Resize image to fit label
+            photo = ImageTk.PhotoImage(image_resized)
+            x = round(index % 2)
+            y = round(index / 2)
+            label = ctk.CTkLabel(master=right_frame, text="", image=photo)  # No text, only image
+            label.place(x=125 + x * 300, y=125 + y * 300)
+            index = index + 1
+
+
+        # input_image = Image.open("./database/dog_002.jpg").convert("RGB")  # Input image
+        # input_image = input_image.resize((128, 128))  # Resize to model-compatible size (e.g., 512x512)
+        # prompt = "fancy dog"
+        # output = pipe(
+        #     prompt=prompt,
+        #     image=input_image,
+        #     strength=0.7,  # How much of the original image to keep (0.0 = no change, 1.0 = full generation)
+        #     guidance_scale=7.5  # Controls adherence to the text prompt
+        # )
+        # result_image = output.images[0]
+        # result_image.save("output.jpg")
+        # result_image.show()
+        # right_image_label.configure(image=img_tk, text="")
+        # right_image_label.image = img_tkq
 
 
 # Function to close the app when "Q" is pressed
@@ -110,11 +180,6 @@ app.bind("Q", quit_app)  # Bind both lowercase and uppercase Q
 sidebar = ctk.CTkFrame(app, width=menu_width, height=screen_height, corner_radius=0)
 sidebar.grid(row=0, column=0, sticky="ns")  # Sticky "ns" makes it fill vertically
 
-# Add menu buttons to the sidebar
-menu_buttons = ["Home", "Settings", "Profile", "About", "Logout"]
-for i, text in enumerate(menu_buttons):
-    button = ctk.CTkButton(sidebar, text=text)
-    button.pack(pady=10, padx=20, fill="x")  # Padding and fill for button layout
 
 # Add an "Upload Image" button
 upload_button = ctk.CTkButton(sidebar, text="Upload Image", command=load_image)
@@ -142,6 +207,10 @@ bottom_middle_label.pack(pady=20)
 # Create the right frame (45% width) for additional content if needed
 right_frame = ctk.CTkFrame(app, width=right_width, height=screen_height)
 right_frame.grid(row=0, column=2, sticky="nsew")
+
+right_image_label = ctk.CTkLabel(right_frame)
+right_image_label.pack(pady=20)
+
 
 # Configure grid layout for resizing behavior
 app.grid_columnconfigure(0, weight=0)  # Sidebar remains fixed size
