@@ -1,7 +1,7 @@
 import customtkinter as ctk
 from tkinter import filedialog
 from PIL import Image, ImageTk
-import cv2
+
 from chromadb.config import Settings
 import chromadb
 import tensorflow as tf
@@ -12,7 +12,7 @@ from diffusers import StableDiffusionImg2ImgPipeline
 # -----------------------------------
 # TensorFlow: Image Feature Extraction
 # -----------------------------------
-
+global temp_img
 # Load pre-trained model for feature extraction
 model = tf.keras.applications.MobileNetV2(input_shape=(224, 224, 3), weights='imagenet', include_top=False, pooling='avg')
 pipe = StableDiffusionImg2ImgPipeline.from_pretrained("runwayml/stable-diffusion-v1-5")
@@ -111,6 +111,8 @@ right_width = screen_width - menu_width - middle_width
 
 # Function to load and display an image in the top half of the middle section
 def load_image():
+    global temp_img
+
     # Open file dialog to select an image file
     file_path = filedialog.askopenfilename(
         filetypes=[("Image files", "*.jpg;*.jpeg;*.png;*.bmp;*.gif")]
@@ -141,6 +143,8 @@ def load_image():
         print(results)
         index = 0
         for i in results['metadatas'][0]:
+            if index == 0:
+                temp_img = i['image_id']
             image = Image.open(i['image_id'])
             image_resized = image.resize((224, 224))  # Resize image to fit label
             photo = ImageTk.PhotoImage(image_resized)
@@ -171,6 +175,26 @@ def load_image():
 def quit_app(event=None):
     app.quit()
 
+def diffusion_fun():
+    global temp_img
+    print(temp_img)
+    file_name = temp_img.split("/")[-1]
+    animal = file_name.split("_")[0]
+    print(animal)
+    input_image = Image.open(temp_img).convert("RGB")  # Input image
+    input_image = input_image.resize((512, 512))  # Resize to model-compatible size (e.g., 512x512)
+    prompt = "fancy " + animal
+    output = pipe(
+        prompt=prompt,
+        image=input_image,
+        strength=0.7,  # How much of the original image to keep (0.0 = no change, 1.0 = full generation)
+        guidance_scale=7.5  # Controls adherence to the text prompt
+    )
+    result_image = output.images[0]
+    result_image.save("output.jpg")
+    result_image.show()
+    # right_image_label.configure(image=img_tk, text="")
+    # right_image_label.image = img_tkq
 
 # Bind the "Q" key to the quit function
 app.bind("q", quit_app)
@@ -184,6 +208,9 @@ sidebar.grid(row=0, column=0, sticky="ns")  # Sticky "ns" makes it fill vertical
 # Add an "Upload Image" button
 upload_button = ctk.CTkButton(sidebar, text="Upload Image", command=load_image)
 upload_button.pack(pady=20, padx=20, fill="x")
+
+diffusers_button = ctk.CTkButton(sidebar, text="diffusion", command=diffusion_fun)
+diffusers_button.pack(pady=40, padx=20, fill="x")
 
 # Create the middle frame (45% width)
 middle_frame = ctk.CTkFrame(app, width=middle_width, height=screen_height)
