@@ -1,4 +1,4 @@
-#Image recognition with vector databas
+# Image recognition with vector databas
 
 Envireoment: python 3.10
 
